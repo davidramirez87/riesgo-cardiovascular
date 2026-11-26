@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Evaluación de Riesgo Cardiovascular</title>
+    <style>
+        body { font-family: sans-serif; max-width: 500px; margin: 40px auto; padding: 20px; }
+        label { display: block; margin-top: 12px; font-weight: bold; }
+        input, select { width: 100%; padding: 8px; margin-top: 4px; box-sizing: border-box; }
+        button { margin-top: 20px; padding: 10px 15px; width: 100%; background: #0275d8; color: white; border: none; cursor: pointer; font-size: 16px; }
+        button:hover { background: #025aa5; }
+        button:disabled { background: #7aa7d1; cursor: wait; }
+        .resultado { display: none; margin-top: 25px; padding: 15px; border-radius: 5px; border-left: 6px solid #ccc; background: #f9f9f9; }
+        .error { display: none; margin-top: 20px; padding: 12px; border-radius: 5px; background: #fdecea; color: #a12622; }
+        .aviso { margin-top: 30px; font-size: 13px; color: #666; }
+    </style>
+</head>
+<body>
+    <h2>Calculadora de Riesgo Cardiovascular</h2>
+
+    <form id="form-riesgo">
+        <label for="genero">Género:</label>
+        <select id="genero" required>
+            <option value="M">Masculino</option>
+            <option value="F">Femenino</option>
+        </select>
+
+        <label for="edad">Edad (años):</label>
+        <input type="number" id="edad" min="18" max="120" required placeholder="Ej. 48">
+
+        <label for="estatura">Estatura (cm):</label>
+        <input type="number" step="0.1" id="estatura" min="100" max="250" required placeholder="Ej. 175">
+
+        <label for="peso">Peso (kg):</label>
+        <input type="number" step="0.1" id="peso" min="30" max="300" required placeholder="Ej. 82.5">
+
+        <button type="submit" id="boton-evaluar">Evaluar Riesgo</button>
+    </form>
+
+    <div id="caja-error" class="error"></div>
+
+    <div id="caja-resultado" class="resultado">
+        <h3>Riesgo estimado: <span id="nivel-riesgo"></span></h3>
+        <p><strong>IMC calculado:</strong> <span id="valor-imc"></span> kg/m²</p>
+        <p><strong>Observaciones:</strong></p>
+        <ul id="lista-factores"></ul>
+    </div>
+
+    <p class="aviso">Estimación orientativa basada solo en edad, género e IMC. No sustituye una evaluación médica.</p>
+
+    <script>
+        const boton = document.getElementById("boton-evaluar");
+        const cajaError = document.getElementById("caja-error");
+        const cajaResultado = document.getElementById("caja-resultado");
+
+        function mostrarError(mensaje) {
+            cajaResultado.style.display = "none";
+            cajaError.textContent = mensaje;
+            cajaError.style.display = "block";
+        }
+
+        document.getElementById("form-riesgo").addEventListener("submit", async function(evento) {
+            // Evita que el navegador recargue la página al enviar el formulario
+            evento.preventDefault();
+            cajaError.style.display = "none";
+
+            // 1. Capturar los datos del formulario
+            const payload = {
+                genero: document.getElementById("genero").value,
+                edad: parseInt(document.getElementById("edad").value),
+                estatura: parseFloat(document.getElementById("estatura").value),
+                peso: parseFloat(document.getElementById("peso").value)
+            };
+
+            // En el plan gratuito de Render el servidor "duerme" y la primera
+            // petición puede tardar ~1 minuto; avisamos al usuario.
+            boton.disabled = true;
+            boton.textContent = "Calculando...";
+
+            try {
+                // 2. Enviar petición asíncrona POST al backend en Flask
+                const respuesta = await fetch("/evaluar", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload)
+                });
+
+                let datos;
+                try {
+                    datos = await respuesta.json();
+                } catch {
+                    mostrarError("El servidor respondió de forma inesperada (código " + respuesta.status + ").");
+                    return;
+                }
+
+                if (!respuesta.ok) {
+                    mostrarError(datos.error || "Ocurrió un error al procesar los datos.");
+                    return;
+                }
+
+                // 3. Actualizar la interfaz dinámicamente con la respuesta JSON
+                const spanNivel = document.getElementById("nivel-riesgo");
+                const listaFactores = document.getElementById("lista-factores");
+
+                cajaResultado.style.display = "block";
+                cajaResultado.style.borderLeftColor = datos.color;
+
+                spanNivel.textContent = datos.nivel_riesgo;
+                spanNivel.style.color = datos.color;
+
+                document.getElementById("valor-imc").textContent = datos.imc;
+
+                // Limpiar lista previa y agregar los nuevos factores
+                listaFactores.innerHTML = "";
+                datos.factores.forEach(factor => {
+                    const li = document.createElement("li");
+                    li.textContent = factor;
+                    listaFactores.appendChild(li);
+                });
+
+            } catch (error) {
+                console.error("Error de conexión:", error);
+                mostrarError("No se pudo conectar con el servidor. Si acabas de abrir la página, espera unos segundos e inténtalo de nuevo.");
+            } finally {
+                boton.disabled = false;
+                boton.textContent = "Evaluar Riesgo";
+            }
+        });
+    </script>
+</body>
+</html>
